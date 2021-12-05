@@ -1,5 +1,5 @@
 # Octopus Energy Monitor
-Energy Monitor for Octopus Smart Tariffs
+Raspberry Pi-based Energy Monitor for Octopus Smart Tariffs
 
 ## Items
 * Raspberry Pi 3 Model B+
