@@ -1,0 +1,79 @@
+---
+# If set to TRUE, the script will not use the LTR559 light sensor and will randomly generate data
+DEBUG: False
+
+
+# How many blinks per kWh your smart meter will do
+BLINKS_PER_KILOWATT: 1005
+
+
+# LTR559 light sensor settings
+LTR559_LIGHT_INTEGRATION_TIME_MILLISECONDS: 50
+LTR559_LIGHT_REPEAT_RATE_MILLISECONDS: 50
+
+# Sleep time between readings in milliseconds
+LTR559_SLEEP_TIME_BETWEEN_READINGS_IN_MILLISECONDS: 20
+
+# What lux difference is needed to trigger a reading
+LTR559_MIN_LUX_DIFFERENCE_FOR_READING: 1.0e-2
+
+# Settings for smoothing the light sensor readings
+# Set limit to 0 to disable
+LTR559_SMOOTHING_LIMIT: 3
+# If the smoothing limit is above 0, we shall add in extra readings,
+# if the current reading interval is above the last reading interval 
+# multiplied by this value, e.g. the current interval between light 
+# readings is 4 seconds, and the previous interval was 2 seconds, 
+# so multiplied by this value (1.7) is 3.4 seconds, this is less 
+# that the current reading so we shall smooth the current reading
+# data by adding in extra readings. We do this upto the smoothing 
+# limit, so if the limit is set to 3, we do this at most 3 times 
+# before we stop smoothing.
+LTR559_SMOOTHING_INTERVAL_MULTIPLIER: 1.7
+
+
+# API Credentials
+API_KEY: ''
+API_PASS: ''
+
+
+# Tariff you are on, choose from: AGILE, FLEXIBLE, GO, or TRACKER
+OCTOPUS_TARIFF: TRACKER
+
+# API URLs for your tariff, see https://api.octopus.energy/v1/products
+# Agile Tariff
+# AGILE_PRICES_URL: https://api.octopus.energy/v1/products/AGILE-18-02-21/electricity-tariffs/E-1R-AGILE-18-02-21-C/standard-unit-rates/
+AGILE_PRICES_URL: https://api.octopus.energy/v1/products/AGILE-FLEX-BB-23-02-08/electricity-tariffs/E-1R-AGILE-FLEX-BB-23-02-08-C/standard-unit-rates/
+
+# Flexible / Standard Tariff
+FLEXIBLE_PRICES_URL: https://api.octopus.energy/v1/products/VAR-BB-23-04-01/electricity-tariffs/E-1R-VAR-BB-23-04-01-C/standard-unit-rates/
+
+# Go Tariff
+# GO_PRICES_URL: https://api.octopus.energy/v1/products/GO-22-03-29/electricity-tariffs/E-1R-GO-22-03-29-C/standard-unit-rates/
+GO_PRICES_URL: https://api.octopus.energy/v1/products/GO-VAR-BB-23-02-07/electricity-tariffs/E-1R-GO-VAR-BB-23-02-07-C/standard-unit-rates
+
+# Tracker Tariff
+TRACKER_PRICES_URL: https://api.octopus.energy/v1/products/SILVER-FLEX-22-11-25/electricity-tariffs/E-1R-SILVER-FLEX-22-11-25-C/standard-unit-rates/
+
+# URL to get electric energy used. Note, electricity usage information needs authentication to work
+ELECTRICITY_USAGE_URL: "https://api.octopus.energy/v1/electricity-meter-points/1200040140419/meters/19L3665678/consumption/"
+
+# Default price to use if we cannot get the price from the API
+DEFAULT_UNIT_PRICE: 20.0
+
+# If set to True it will use the offline price data in the data/prices/offline folder
+OFFLINE: False
+
+# If you are offline, these define the files to get the tariff prices from
+OFFLINE_AGILE_PRICES_FILE: octopus_agile_2023_10_04.csv
+OFFLINE_FLEXIBLE_PRICES_FILE: octopus_flexible_2023_09_30.csv
+OFFLINE_GO_PRICES_FILE: octopus_go_2023_02_07.csv
+OFFLINE_TRACKER_PRICES_FILE: octopus_tracker_2023_10_01.csv
+
+
+# Show FPS counter on screen: True or False
+SHOW_FPS: False
+
+# Screen width and height of your display you are using
+SCREEN_WIDTH: 800
+SCREEN_HEIGHT: 480
