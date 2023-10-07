@@ -4,7 +4,7 @@ DEBUG: False
 
 
 # How many blinks per kWh your smart meter will do
-BLINKS_PER_KILOWATT: 1005
+BLINKS_PER_KILOWATT: 1002
 
 
 # LTR559 light sensor settings
