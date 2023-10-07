@@ -765,6 +765,8 @@ def main():
 
     # Get the configuration
     config_path = os.path.join(data_directory, "config.yaml")
+    if not os.path.exists(config_path):
+        config_path = os.path.join(data_directory, "config.template.yaml")
     config = get_config_from_yaml(config_path)
 
     # Start the energy monitor thread
