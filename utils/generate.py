@@ -91,6 +91,13 @@ def arg_parse() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "-r",
+        "--regen",
+        action="store_true",
+        help="Regenerate data. Default: False.",
+    )
+
     if len(sys.argv) == 1:
         logging.info("No arguments provided, showing help...")
         parser.print_help(sys.stderr)
@@ -577,6 +584,7 @@ def main() -> None:
                     api_directory=api_directory,
                     prices_directory=prices_directory,
                     days_to_go_back=args.days,
+                    regen=args.regen,
                 )
             else:
                 if args.from_date is None or args.to_date is None:
@@ -599,6 +607,7 @@ def main() -> None:
                     prices_directory=prices_directory,
                     from_date=from_date,
                     to_date=to_date,
+                    regen=args.regen,
                 )
         else:
             if args.target is not None:
