@@ -74,7 +74,7 @@ def convert_price_csv_to_dict(filename: str) -> pd.DataFrame:
     """
     prices_df = pd.read_csv(
         filename,
-        dtype={"Time": "str", "Price": "float16"},
+        dtype={"Time": "str", "Price": "float32"},
         parse_dates=["Date"],
     )
     time_to_price_map = prices_df.set_index("Time").to_dict()["Price"]

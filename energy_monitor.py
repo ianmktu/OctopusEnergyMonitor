@@ -1178,9 +1178,9 @@ def main():
                 screen.blit(text, (613, 385))
 
             yesterday_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-            last_week_start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=8)
+            last_week_start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
             last_month_start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
-                days=32
+                days=31
             )
 
             if yesterday_cost > 0 and yesterday_power > 0:

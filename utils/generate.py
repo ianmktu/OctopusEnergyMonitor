@@ -6,10 +6,11 @@ import os
 import sys
 import traceback
 
+import pandas as pd
 import requests
 from config import get_config_from_yaml
 from logger import setup_logging
-from prices import TIMES, api_prices_to_dict, get_energy_prices_from_api
+from prices import TIMES, api_prices_to_dict, convert_price_csv_to_dict, get_energy_prices_from_api
 from tzlocal import get_localzone
 
 
@@ -113,6 +114,33 @@ def get_energy_usage_from_api(
     return electricity_usage
 
 
+def write_electricity_usage_to_concise_csv(
+    time_to_kilowatts_map: dict, target_date: datetime, csv_filename: str
+) -> None:
+    """
+    Writes electricity usage data to a CSV file in a concise format.
+
+    Args:
+        time_to_kilowatts_map (dict): A dictionary mapping time keys to kilowatts usage.
+        target_date (datetime): The target date for the usage data.
+        csv_filename (str): The filename of the CSV file to write to.
+
+    Returns:
+        None
+    """
+    with open(csv_filename, "w", newline="\n") as f:
+        csv_writer = csv.writer(f, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
+        csv_writer.writerow(["Date", "Time", "Usage (kW)"])
+        for time_key in sorted(time_to_kilowatts_map):
+            csv_writer.writerow(
+                [
+                    target_date.strftime("%Y-%m-%d"),
+                    time_key,
+                    time_to_kilowatts_map[time_key],
+                ]
+            )
+
+
 def write_electricity_usage_to_csv(
     time_to_kilowatts_map: dict, target_date: datetime, csv_filename: str, cutoff_time: datetime = None
 ) -> None:
@@ -204,7 +232,7 @@ def generate_time_kilowatt_usage_dict(target_date: datetime, config: dict, csv_f
         timezone=current_timezone,
     )
 
-    assert len(result) == 48, f"Expected 48 results for {target_date}, got {len(result)}"
+    assert len(result) == 48, f"Expected 48 results for {target_date} from API, got {len(result)}"
 
     time_to_kilowatts_map = dict()
     for time_str in TIMES:
@@ -228,6 +256,9 @@ def generate_time_kilowatt_usage_dict(target_date: datetime, config: dict, csv_f
             ):
                 time_to_kilowatts_map[time_str] = usage["consumption"]
                 break
+
+    if len(time_to_kilowatts_map) != 48:
+        raise ValueError(f"Expected 48 results for {target_date} after processing, got {len(time_to_kilowatts_map)}")
 
     if csv_filename is not None:
         os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
@@ -271,7 +302,42 @@ def generate_dummy_readings_csv(
     logging.info(f'Successfully generated file at: "{output_filename}"')
 
 
-def generate_stats(config: dict, days: int = 30) -> None:
+def convert_concise_electricity_usage_csv_to_dict(filename: str) -> pd.DataFrame:
+    """
+    Reads a CSV file containing time and price data, and returns a dictionary
+    mapping time to price.
+
+    Args:
+        filename (str): The path to the CSV file.
+
+    Returns:
+        dict: A dictionary mapping time (str) to electricity usage (float16).
+    """
+    prices_df = pd.read_csv(
+        filename,
+        dtype={"Time": "str", "Usage (kW)": "float32"},
+        parse_dates=["Date"],
+    )
+    time_to_price_map = prices_df.set_index("Time").to_dict()["Usage (kW)"]
+    return time_to_price_map
+
+
+def generate_stats(
+    config: dict, api_directory: str = None, prices_directory: str = None, days: int = 30, regen: bool = False
+) -> None:
+    """
+    Generates statistics for electricity usage and price data for a given number of days.
+
+    Args:
+        config (dict): A dictionary containing configuration information.
+        api_directory (str): The directory to store the API data in.
+        prices_directory (str): The directory to store the price data in.
+        days (int, optional): The number of days to generate statistics for. Defaults to 30.
+        regen (bool, optional): Whether to regenerate the data. Defaults to False.
+
+    Returns:
+        None
+    """
     current_datetime_min = datetime.datetime.combine(datetime.datetime.now(), datetime.time.min)
     current_datetime_max = current_datetime_min + datetime.timedelta(days=1)
 
@@ -283,14 +349,49 @@ def generate_stats(config: dict, days: int = 30) -> None:
             time_to_kilowatts_store = dict()
             for i in range(days):
                 target_date = current_datetime_min - datetime.timedelta(days=i)
+
+                if api_directory is not None:
+                    electricity_usage_path = os.path.join(api_directory, "electricity_usage")
+                    electricity_usage_filename = os.path.join(electricity_usage_path, f"{target_date.date()}.csv")
+                    if regen and os.path.exists(electricity_usage_filename):
+                        os.remove(electricity_usage_filename)
+                else:
+                    electricity_usage_filename = None
+
                 logging.info(f"[   USAGE] [{i+1:2d}/{days:2d}] [{target_date.date()}] Getting day usage data...")
 
-                time_to_kilowatts_store[target_date.date()] = generate_time_kilowatt_usage_dict(
-                    target_date=target_date, config=config, csv_filename=None
-                )
+                if electricity_usage_filename is None or not os.path.exists(electricity_usage_filename):
+                    time_to_kilowatts_store[target_date.date()] = generate_time_kilowatt_usage_dict(
+                        target_date=target_date, config=config, csv_filename=electricity_usage_filename
+                    )
+                else:
+                    logging.debug(
+                        f"[   USAGE] [{i+1:2d}/{days:2d}] [{target_date.date()}]"
+                        f" Reading CSV file: {electricity_usage_filename}"
+                    )
+                    time_to_kilowatts_store[target_date.date()] = convert_concise_electricity_usage_csv_to_dict(
+                        electricity_usage_filename
+                    )
                 logging.info(
-                    f"[   USAGE] [{i+1:2d}/{days:2d}] [{target_date.date()}] Total usage data: {sum(time_to_kilowatts_store[target_date.date()].values()):.3f} kW"
+                    f"[   USAGE] [{i+1:2d}/{days:2d}] [{target_date.date()}]"
+                    f" Total usage data: {sum(time_to_kilowatts_store[target_date.date()].values()):.3f} kW"
                 )
+
+                if api_directory is not None:
+                    logging.debug(
+                        f"[   USAGE] [{i+1:2d}/{days:2d}] [{target_date.date()}]"
+                        f" Writing CSV file: {electricity_usage_filename}"
+                    )
+                    os.makedirs(electricity_usage_path, exist_ok=True)
+                    write_electricity_usage_to_concise_csv(
+                        time_to_kilowatts_map=time_to_kilowatts_store[target_date.date()],
+                        target_date=target_date,
+                        csv_filename=electricity_usage_filename,
+                    )
+                    logging.debug(
+                        f"[   USAGE] [{i+1:2d}/{days:2d}] [{target_date.date()}]"
+                        f" CSV file written: {electricity_usage_filename}"
+                    )
 
             day_keys = sorted(list(time_to_kilowatts_store.keys()))
             logging.info("")
@@ -311,30 +412,45 @@ def generate_stats(config: dict, days: int = 30) -> None:
                     url = config[tariff_url_key]
                     target_date_min = current_datetime_min - datetime.timedelta(days=i)
                     target_date_max = current_datetime_max - datetime.timedelta(days=i)
-                    logging.info(
+                    logging.debug(
                         f"[{tariff_name:>8s}] [{i+1:2d}/{days:2d}] [{target_date_min.date()}] Getting day price data..."
                     )
 
-                    api_prices = get_energy_prices_from_api(
-                        url=url,
-                        api_key=config["API_KEY"],
-                        api_pass=config["API_PASS"],
-                        start_date=target_date_min,
-                        end_date=target_date_max,
-                        timezone=current_timezone,
-                    )
+                    if prices_directory is not None:
+                        price_path = os.path.join(prices_directory, tariff_name.lower())
+                        tariff_price_filename = os.path.join(price_path, f"{target_date_min.date()}.csv")
+                        if regen and os.path.exists(tariff_price_filename):
+                            os.remove(tariff_price_filename)
+                    else:
+                        tariff_price_filename = None
 
-                    time_to_price_map = api_prices_to_dict(
-                        prices=api_prices,
-                        current_date=target_date_min,
-                        current_timezone=current_timezone,
-                        tariff=tariff_name,
-                        config=config,
-                        csv_filename=None,
-                    )
+                    if tariff_price_filename is None or not os.path.exists(tariff_price_filename):
+                        api_prices = get_energy_prices_from_api(
+                            url=url,
+                            api_key=config["API_KEY"],
+                            api_pass=config["API_PASS"],
+                            start_date=target_date_min,
+                            end_date=target_date_max,
+                            timezone=current_timezone,
+                        )
+
+                        time_to_price_map = api_prices_to_dict(
+                            prices=api_prices,
+                            current_date=target_date_min,
+                            current_timezone=current_timezone,
+                            tariff=tariff_name,
+                            config=config,
+                            csv_filename=tariff_price_filename,
+                        )
+                    else:
+                        logging.debug(
+                            f"[{tariff_name:>8s}] [{i+1:2d}/{days:2d}] [{target_date_min.date()}]"
+                            f" Reading CSV file: {tariff_price_filename}"
+                        )
+                        time_to_price_map = convert_price_csv_to_dict(tariff_price_filename)
 
                     if len(time_to_price_map) != 48:
-                        raise Exception(
+                        raise ValueError(
                             f"Expected 48 results for {target_date_min.date()}, got {len(time_to_price_map)}"
                         )
 
@@ -371,7 +487,8 @@ def generate_stats(config: dict, days: int = 30) -> None:
 
                 logging.info(
                     f"[{day_keys[0]} to {day_keys[-1]} ({len(day_keys)})] [{tariff_name:>8s}]"
-                    f" [POWER: {stats[tariff_name]['power']:.1f} kW] [COST: £ {stats[tariff_name]['cost']/100:6.2f}]"
+                    f" [POWER: {stats[tariff_name]['power']:.1f} kW] [COST: £ {stats[tariff_name]['cost'] / 100:6.2f}]"
+                    f" [COST PER KW: {stats[tariff_name]['cost'] / stats[tariff_name]['power']:4.1f}p]"
                 )
 
             logging.info("")
@@ -390,11 +507,19 @@ def main():
     setup_logging(log_path=os.path.join(script_dir, "generate.log"))
     args = arg_parse()
 
+    api_directory = os.path.join(script_dir, "..", "data", "api")
+    os.makedirs(api_directory, exist_ok=True)
+
+    prices_directory = os.path.join(script_dir, "..", "data", "prices")
+    os.makedirs(prices_directory, exist_ok=True)
+
     config = get_config_from_yaml(os.path.join(script_dir, "..", "data", "config.yaml"))
 
     if args.stats:
         logging.info("Generating stats...")
-        generate_stats(config=config, days=args.days)
+        generate_stats(
+            config=config, api_directory=api_directory, prices_directory=prices_directory, days=args.days, regen=False
+        )
     else:
         if args.target is not None:
             target_date = datetime.datetime.strptime(args.target, "%Y-%m-%d").date()
