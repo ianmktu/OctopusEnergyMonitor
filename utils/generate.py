@@ -69,6 +69,28 @@ def arg_parse() -> argparse.Namespace:
         help="Number of days to generate stats for. Default: 30.",
     )
 
+    parser.add_argument(
+        "-fd",
+        "--from_date",
+        type=str,
+        default=None,
+        help=(
+            "Date to start generating stats from. Format: YYYY-MM-DD. Needs to be couple with --to_date."
+            " Default: None (Will use args.days when generating stats if args.from_date and args.to_date not given)."
+        ),
+    )
+
+    parser.add_argument(
+        "-td",
+        "--to_date",
+        type=str,
+        default=None,
+        help=(
+            "Date to stop generating stats to. Format: YYYY-MM-DD. Needs to be couple with --from_date."
+            " Default: None (Will use args.days when generating stats if args.from_date and args.to_date not given)."
+        ),
+    )
+
     if len(sys.argv) == 1:
         logging.info("No arguments provided, showing help...")
         parser.print_help(sys.stderr)
@@ -323,7 +345,13 @@ def convert_concise_electricity_usage_csv_to_dict(filename: str) -> pd.DataFrame
 
 
 def generate_stats(
-    config: dict, api_directory: str = None, prices_directory: str = None, days: int = 30, regen: bool = False
+    config: dict,
+    api_directory: str = None,
+    prices_directory: str = None,
+    days_to_go_back: int = 30,
+    regen: bool = False,
+    from_date: datetime.date = None,
+    to_date: datetime.date = None,
 ) -> None:
     """
     Generates statistics for electricity usage and price data for a given number of days.
@@ -332,13 +360,22 @@ def generate_stats(
         config (dict): A dictionary containing configuration information.
         api_directory (str): The directory to store the API data in.
         prices_directory (str): The directory to store the price data in.
-        days (int, optional): The number of days to generate statistics for. Defaults to 30.
+        days_to_go_back (int, optional): The number of days to generate statistics for. Defaults to 30.
         regen (bool, optional): Whether to regenerate the data. Defaults to False.
+        from_date (datetime.date, optional): The start date for the statistics.
+                                             Defaults to None, will use days_to_go_back methods instead.
+        to_date (datetime.date, optional): The end date for the statistics.
+                                           Defaults to None, will use days_to_go_back methods instead.
 
     Returns:
         None
     """
-    current_datetime_min = datetime.datetime.combine(datetime.datetime.now(), datetime.time.min)
+    if from_date is None and to_date is None:
+        current_datetime_min = datetime.datetime.combine(datetime.datetime.now(), datetime.time.min)
+        days = days_to_go_back
+    else:
+        current_datetime_min = datetime.datetime.combine(to_date, datetime.time.min)
+        days = (to_date - from_date).days + 1
     current_datetime_max = current_datetime_min + datetime.timedelta(days=1)
 
     while True:
@@ -493,7 +530,10 @@ def generate_stats(
 
             logging.info("")
             return
-        except AssertionError:
+        except AssertionError as e:
+            if from_date is not None and to_date is not None:
+                logging.error(f"Error: {traceback.format_exc()}")
+                raise e
             current_datetime_min -= datetime.timedelta(days=1)
             current_datetime_max -= datetime.timedelta(days=1)
         except Exception as e:
@@ -501,60 +541,103 @@ def generate_stats(
             raise e
 
 
-def main():
-    script_dir = os.path.dirname(os.path.realpath(__file__))
+def main() -> None:
+    """
+    This function generates either statistics or a dummy readings CSV file, depending on the command line arguments
+    passed.
 
-    setup_logging(log_path=os.path.join(script_dir, "generate.log"))
-    args = arg_parse()
+    If the --stats flag is passed, statistics are generated. If the --target flag is passed, a dummy readings CSV file
+    is generated.
 
-    api_directory = os.path.join(script_dir, "..", "data", "api")
-    os.makedirs(api_directory, exist_ok=True)
+    Args:
+        None
 
-    prices_directory = os.path.join(script_dir, "..", "data", "prices")
-    os.makedirs(prices_directory, exist_ok=True)
+    Returns:
+        None
+    """
+    try:
+        script_dir = os.path.dirname(os.path.realpath(__file__))
 
-    config = get_config_from_yaml(os.path.join(script_dir, "..", "data", "config.yaml"))
+        setup_logging(log_path=os.path.join(script_dir, "generate.log"))
+        args = arg_parse()
 
-    if args.stats:
-        logging.info("Generating stats...")
-        generate_stats(
-            config=config, api_directory=api_directory, prices_directory=prices_directory, days=args.days, regen=False
-        )
-    else:
-        if args.target is not None:
-            target_date = datetime.datetime.strptime(args.target, "%Y-%m-%d").date()
-        else:
-            target_date = datetime.datetime(2023, 10, 5)
+        api_directory = os.path.join(script_dir, "..", "data", "api")
+        os.makedirs(api_directory, exist_ok=True)
 
-        if args.basis is not None:
-            basis_date = datetime.datetime.strptime(args.basis, "%Y-%m-%d").date()
-        else:
-            basis_date = datetime.datetime(2023, 10, 4)
+        prices_directory = os.path.join(script_dir, "..", "data", "prices")
+        os.makedirs(prices_directory, exist_ok=True)
 
-        if args.cutoff is not None:
-            cutoff = datetime.datetime.strptime(args.cutoff, "%H:%M").time()
-        else:
-            cutoff = None
+        config = get_config_from_yaml(os.path.join(script_dir, "..", "data", "config.yaml"))
 
-        if args.output is not None:
-            if os.path.dirname(args.output) == "":
-                output = os.path.join(os.getcwd(), args.output)
+        if args.stats:
+            logging.info("Generating stats...")
+            if args.from_date is None and args.to_date is None:
+                generate_stats(
+                    config=config,
+                    api_directory=api_directory,
+                    prices_directory=prices_directory,
+                    days_to_go_back=args.days,
+                )
             else:
-                output = args.output
+                if args.from_date is None or args.to_date is None:
+                    logging.error(
+                        f"Error: --from_date '{args.from_date}' and --to_date '{args.to_date}'"
+                        " must be used together and neither None."
+                    )
+                    return
 
-            logging.info("Generating CSV...")
-            logging.info(f"  Target date: {target_date}")
-            logging.info(f"   Basis date: {basis_date}")
-            logging.info(f"  Cutoff Time: {cutoff}")
-            logging.info(f"       Output: {output}")
+                from_date = datetime.datetime.strptime(args.from_date, "%Y-%m-%d").date()
+                to_date = datetime.datetime.strptime(args.to_date, "%Y-%m-%d").date()
 
-            generate_dummy_readings_csv(
-                config=config,
-                output_filename=output,
-                target_date=target_date,
-                basis_date=basis_date,
-                cutoff_time=cutoff,
-            )
+                if from_date > to_date:
+                    logging.error(f"Error: --from_date '{args.from_date}' must be before --to_date '{args.to_date}'.")
+                    return
+
+                generate_stats(
+                    config=config,
+                    api_directory=api_directory,
+                    prices_directory=prices_directory,
+                    from_date=from_date,
+                    to_date=to_date,
+                )
+        else:
+            if args.target is not None:
+                target_date = datetime.datetime.strptime(args.target, "%Y-%m-%d").date()
+            else:
+                target_date = datetime.datetime(2023, 10, 5)
+
+            if args.basis is not None:
+                basis_date = datetime.datetime.strptime(args.basis, "%Y-%m-%d").date()
+            else:
+                basis_date = datetime.datetime(2023, 10, 4)
+
+            if args.cutoff is not None:
+                cutoff = datetime.datetime.strptime(args.cutoff, "%H:%M").time()
+            else:
+                cutoff = None
+
+            if args.output is not None:
+                if os.path.dirname(args.output) == "":
+                    output = os.path.join(os.getcwd(), args.output)
+                else:
+                    output = args.output
+
+                logging.info("Generating CSV...")
+                logging.info(f"  Target date: {target_date}")
+                logging.info(f"   Basis date: {basis_date}")
+                logging.info(f"  Cutoff Time: {cutoff}")
+                logging.info(f"       Output: {output}")
+
+                generate_dummy_readings_csv(
+                    config=config,
+                    output_filename=output,
+                    target_date=target_date,
+                    basis_date=basis_date,
+                    cutoff_time=cutoff,
+                )
+    except Exception as e:
+        logging.error(f"Error: {traceback.format_exc()}")
+        raise e
 
 
 if __name__ == "__main__":
