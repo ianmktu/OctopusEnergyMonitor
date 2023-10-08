@@ -849,6 +849,11 @@ def main():
                 previous_time_watts_map = None
                 tomorrows_average_unit_price = None
 
+                past_cost_and_power_thread_first_run = True
+                if past_cost_and_power_thread is not None:
+                    past_cost_and_power_thread.join()
+                    past_cost_and_power_thread = None
+
                 # Compress and archive old readings
                 compress_and_archive_old_readings(
                     monitor_data_directory=monitor_data_directory,
@@ -1033,7 +1038,7 @@ def main():
                 cost_hour = cost_and_power_data["sixty_mins_cost"]
                 readings_df = cost_and_power_data["readings_df"]
                 time_to_price_map = cost_and_power_data["time_to_price_map"]
-                past_cost_and_power_thread_first_run = False        
+                past_cost_and_power_thread_first_run = False
 
             if past_cost_and_power_thread is None and not past_cost_and_power_thread_first_run:
                 cost_and_power_data = dict()
