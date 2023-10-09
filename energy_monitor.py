@@ -1071,6 +1071,7 @@ def main():
                 time_to_price_map=time_to_price_map,
             )
             cost_total = total_cost_power_data_dict["cost"]
+            power_total_from_dict = total_cost_power_data_dict["power"]
             previous_time_watts_map = total_cost_power_data_dict["time_to_watts_map"]
 
             # Costs
@@ -1138,7 +1139,7 @@ def main():
             screen.blit(text, (589, 180))
 
             text = fonts["number_major_font"].render(
-                "{:4.1f}p".format(100 * cost_total / power_total), True, default_colour
+                "{:4.1f}p".format(100 * cost_total / max(1, power_total_from_dict)), True, default_colour
             )
             screen.blit(text, (600, 212))
 
