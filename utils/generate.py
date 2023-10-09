@@ -574,9 +574,9 @@ def main() -> None:
         prices_directory = os.path.join(script_dir, "..", "data", "prices")
         os.makedirs(prices_directory, exist_ok=True)
 
-        config_path = os.path.join(script_dir, "..", "config", "config.yaml")
+        config_path = os.path.join(script_dir, "..", "data", "config.yaml")
         if not os.path.exists(config_path):
-            config_path = os.path.join(script_dir, "..", "config", "config.template.yaml")
+            config_path = os.path.join(script_dir, "..", "data", "config.template.yaml")
         config = get_config_from_yaml(config_path)
 
         if args.stats:
