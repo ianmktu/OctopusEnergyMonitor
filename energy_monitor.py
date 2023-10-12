@@ -182,21 +182,18 @@ def get_time_to_price_map_for_day(prices_directory: str, config: dict, target_da
     return time_to_price_map
 
 
-def get_readings_df_from_date(monitor_data_directory: str, target_date: datetime) -> pd.DataFrame:
+def get_readings_df_from_path(readings_csv_filename: str) -> pd.DataFrame:
     """
-    Returns a pandas DataFrame containing energy monitor readings for a given date.
+    Returns a pandas DataFrame containing energy monitor readings from a given CSV file.
 
     Args:
-    - monitor_data_directory (str): The directory where the monitor data is stored.
-    - target_date (datetime): The date for which the readings are required.
+    - readings_csv_filename (str): The path to the CSV file containing the energy monitor readings.
 
     Returns:
-    - readings_df (pd.DataFrame): A pandas DataFrame containing energy monitor readings for the given date.
+    - readings_df (pd.DataFrame): A pandas DataFrame containing energy monitor readings from the given CSV file.
     """
     readings_df = None
 
-    target_day = target_date.strftime("%Y-%m-%d")
-    readings_csv_filename = os.path.join(monitor_data_directory, f"{target_day}.csv")
     if os.path.exists(readings_csv_filename):
         readings_df = pd.read_csv(
             readings_csv_filename,
@@ -210,6 +207,25 @@ def get_readings_df_from_date(monitor_data_directory: str, target_date: datetime
                 "Origin": "str",
             },
         )
+
+    return readings_df
+
+
+def get_readings_df_from_date(monitor_data_directory: str, target_date: datetime) -> pd.DataFrame:
+    """
+    Returns a pandas DataFrame containing energy monitor readings for a given date.
+
+    Args:
+    - monitor_data_directory (str): The directory where the monitor data is stored.
+    - target_date (datetime): The date for which the readings are required.
+
+    Returns:
+    - readings_df (pd.DataFrame): A pandas DataFrame containing energy monitor readings for the given date.
+    """
+
+    target_day = target_date.strftime("%Y-%m-%d")
+    readings_csv_filename = os.path.join(monitor_data_directory, f"{target_day}.csv")
+    readings_df = get_readings_df_from_path(readings_csv_filename)
 
     return readings_df
 
@@ -379,7 +395,7 @@ def calculate_total_cost_and_power_faster(
         dict: A dictionary containing the calculated total cost, power, and time to watts mapping.
     """
 
-    calculated_data = {"cost": 0, "power": 0, "time_to_watts_map": None}
+    calculated_data = {"cost": 0, "power": 0, "average_cost_in_pence": 0, "time_to_watts_map": None}
 
     if readings_df is None or time_to_price_map is None:
         return calculated_data
@@ -412,17 +428,20 @@ def calculate_total_cost_and_power_faster(
     calculated_data["time_to_watts_map"] = time_to_watts_map
 
     for time_str in TIMES:
-        calculated_data["power"] += time_to_watts_map[time_str] * (1000.0 / config["BLINKS_PER_KILOWATT"]) / 1000
         try:
+            current_power = time_to_watts_map[time_str] / config["BLINKS_PER_KILOWATT"]
+            calculated_data["power"] += current_power
+
             if time_str in time_to_price_map:
-                calculated_data["cost"] += (
-                    time_to_watts_map[time_str]
-                    * time_to_price_map[time_str]
-                    * (1000.0 / config["BLINKS_PER_KILOWATT"])
-                    / 100000
-                )
+                calculated_data["cost"] += current_power * time_to_price_map[time_str] / 100
+
         except Exception:
             logging.error(f"Error in calculate_total_cost_and_power_faster: {traceback.format_exc()}")
+
+    if calculated_data["power"] == 0:
+        calculated_data["average_cost_in_pence"] = 0
+    else:
+        calculated_data["average_cost_in_pence"] = 100 * calculated_data["cost"] / calculated_data["power"]
 
     return calculated_data
 
@@ -764,16 +783,17 @@ def main():
     setup_logging(logger_path, log_level=logging.INFO)
 
     # Get the configuration
-    config_path = os.path.join(data_directory, "config.yaml")
+    utils_directory = os.path.join(SCRIPT_DIR, "utils")
+    config_path = os.path.join(utils_directory, "config.yaml")
     if not os.path.exists(config_path):
-        config_path = os.path.join(data_directory, "config.template.yaml")
+        config_path = os.path.join(utils_directory, "config.template.yaml")
     config = get_config_from_yaml(config_path)
 
     # Start the energy monitor thread
     energy_loggger_thread = EnergyMonitor(config=config, save_directory=monitor_data_directory)
     energy_loggger_thread.run()
 
-    # Hide the Pygame support prompt
+    # Hide the Pygame support prompt and detect AVX2
     os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 
     # Set up the Pygame window
@@ -1071,7 +1091,7 @@ def main():
                 time_to_price_map=time_to_price_map,
             )
             cost_total = total_cost_power_data_dict["cost"]
-            power_total_from_dict = total_cost_power_data_dict["power"]
+            average_cost_in_pence = total_cost_power_data_dict["average_cost_in_pence"]
             previous_time_watts_map = total_cost_power_data_dict["time_to_watts_map"]
 
             # Costs
@@ -1138,9 +1158,7 @@ def main():
             text = fonts["heading_font"].render("Average Unit Cost:", True, heading_colour)
             screen.blit(text, (589, 180))
 
-            text = fonts["number_major_font"].render(
-                "{:4.1f}p".format(100 * cost_total / max(1, power_total_from_dict)), True, default_colour
-            )
+            text = fonts["number_major_font"].render("{:4.1f}p".format(average_cost_in_pence), True, default_colour)
             screen.blit(text, (600, 212))
 
             # Current Unit Price

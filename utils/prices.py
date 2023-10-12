@@ -61,7 +61,7 @@ TIMES = [
 ]
 
 
-def convert_price_csv_to_dict(filename: str) -> pd.DataFrame:
+def convert_price_csv_to_dict(filename: str) -> dict:
     """
     Reads a CSV file containing time and price data, and returns a dictionary
     mapping time to price.
@@ -347,7 +347,7 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.realpath(__file__))
     from config import get_config_from_yaml
 
-    config = get_config_from_yaml(os.path.join(script_dir, "..", "data", "config.yaml"))
+    config = get_config_from_yaml(os.path.join(script_dir, "..", "utils", "config.yaml"))
     prices_directory = os.path.join(script_dir, "..", "data", "prices")
 
     offline_prices = get_offline_prices(config, prices_directory)
