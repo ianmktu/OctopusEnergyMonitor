@@ -194,7 +194,6 @@ def api_prices_to_dict(
     current_date: datetime,
     current_timezone: tzinfo,
     tariff: str,
-    config: dict,
     csv_filename: str,
 ) -> dict:
     """
@@ -206,7 +205,6 @@ def api_prices_to_dict(
         current_timezone (tzinfo): The current timezone.
         tariff (str): The tariff to use.
         csv_filename (str): The filename of the CSV file to write the prices to. If None, then no CSV file is written.
-        config (dict): A dictionary of configuration options.
 
     Returns:
         dict: A dictionary of time-to-price mappings.
@@ -332,7 +330,6 @@ def get_energy_prices(start_date, end_date, config, prices_directory):
             current_date=start_date,
             current_timezone=current_timezone,
             tariff=config["OCTOPUS_TARIFF"],
-            config=config,
             csv_filename=price_csv_filename,
         )
     except Exception:
@@ -376,7 +373,6 @@ if __name__ == "__main__":
         current_date=start_date,
         current_timezone=tz,
         tariff=config["OCTOPUS_TARIFF"],
-        config=config,
         csv_filename=None,
     )
 

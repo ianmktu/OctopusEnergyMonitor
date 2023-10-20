@@ -58,6 +58,9 @@ TRACKER_PRICES_URL: https://api.octopus.energy/v1/products/SILVER-FLEX-22-11-25/
 # URL to get electric energy used. Note, electricity usage information needs authentication to work
 ELECTRICITY_USAGE_URL: "https://api.octopus.energy/v1/electricity-meter-points/1200040140419/meters/19L3665678/consumption/"
 
+# Percentage VAT to add to the prices
+ELECTRICITY_VAT: 5
+
 # Default price to use if we cannot get the price from the API
 DEFAULT_UNIT_PRICE: 20.0
 

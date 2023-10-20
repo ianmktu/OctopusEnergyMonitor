@@ -62,11 +62,11 @@ def arg_parse() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "-d",
-        "--days",
+        "-pd",
+        "--previous-days",
         type=int,
         default=30,
-        help="Number of days to generate stats for. Default: 30.",
+        help="Number of previous days to generate stats for. Default: 30.",
     )
 
     parser.add_argument(
@@ -76,7 +76,7 @@ def arg_parse() -> argparse.Namespace:
         default=None,
         help=(
             "Date to start generating stats from. Format: YYYY-MM-DD. Needs to be couple with --to_date."
-            " Default: None (Will use args.days when generating stats if args.from_date and args.to_date not given)."
+            " Default: None (Will use args.previous_days when generating stats if args.from_date and args.to_date not given)."
         ),
     )
 
@@ -87,7 +87,18 @@ def arg_parse() -> argparse.Namespace:
         default=None,
         help=(
             "Date to stop generating stats to. Format: YYYY-MM-DD. Needs to be couple with --from_date."
-            " Default: None (Will use args.days when generating stats if args.from_date and args.to_date not given)."
+            " Default: None (Will use args.previous_days when generating stats if args.from_date and args.to_date not given)."
+        ),
+    )
+
+    parser.add_argument(
+        "-d",
+        "--date",
+        type=str,
+        default=None,
+        help=(
+            "Date to generate stats for. Format: YYYY-MM-DD."
+            " Default: None (Will use args.previous_days when generating stats if args.date, and args.from_date and args.to_date not given)."
         ),
     )
 
@@ -483,7 +494,6 @@ def generate_stats(
                             current_date=target_date_min,
                             current_timezone=current_timezone,
                             tariff=tariff_name,
-                            config=config,
                             csv_filename=tariff_price_filename,
                         )
                     else:
@@ -503,9 +513,10 @@ def generate_stats(
                     tariff_to_price_store[tariff_name][target_date_min.date()] = time_to_price_map
 
                     average_price = sum(time_to_price_map.values()) / len(time_to_price_map)
+                    average_price_ex_vat = average_price / (1 + (config["ELECTRICITY_VAT"] / 100))
                     logging.info(
                         f"[{tariff_name:>8s}] [{i+1:2d}/{days:2d}] [{target_date_min.date()}]"
-                        f" Average price: {average_price:4.1f}p"
+                        f" Average price: {average_price:4.1f}p (ex. VAT: {average_price_ex_vat:4.1f}p)"
                     )
 
             logging.info("")
@@ -529,10 +540,14 @@ def generate_stats(
                             current_time_to_kilowatt_map[time_str] * current_time_to_price_map[time_str]
                         )
 
+                electricity_vat = 1 + (config["ELECTRICITY_VAT"] / 100)
                 logging.info(
                     f"[{day_keys[0]} to {day_keys[-1]} ({len(day_keys)})] [{tariff_name:>8s}]"
-                    f" [POWER: {stats[tariff_name]['power']:.1f} kW] [COST: £ {stats[tariff_name]['cost'] / 100:6.2f}]"
+                    f" [POWER: {stats[tariff_name]['power']:.1f} kW]"
+                    f" [COST: £ {stats[tariff_name]['cost'] / 100:6.2f}]"
+                    f" [COST EX. VAT: £ {stats[tariff_name]['cost'] / (100 * electricity_vat):6.2f}]"
                     f" [COST PER KW: {stats[tariff_name]['cost'] / stats[tariff_name]['power']:4.1f}p]"
+                    f" [COST PER KW EX. VAT: {stats[tariff_name]['cost'] / (stats[tariff_name]['power'] * electricity_vat):4.1f}p]"
                 )
 
             logging.info("")
@@ -581,15 +596,15 @@ def main() -> None:
 
         if args.stats:
             logging.info("Generating stats...")
-            if args.from_date is None and args.to_date is None:
+            if args.from_date is None and args.to_date is None and args.date is None:
                 generate_stats(
                     config=config,
                     api_directory=api_directory,
                     prices_directory=prices_directory,
-                    days_to_go_back=args.days,
+                    days_to_go_back=args.previous_days,
                     regen=args.regen,
                 )
-            else:
+            elif args.from_date is not None or args.to_date is not None:
                 if args.from_date is None or args.to_date is None:
                     logging.error(
                         f"Error: --from_date '{args.from_date}' and --to_date '{args.to_date}'"
@@ -610,6 +625,17 @@ def main() -> None:
                     prices_directory=prices_directory,
                     from_date=from_date,
                     to_date=to_date,
+                    regen=args.regen,
+                )
+            else:
+                date_to_process = datetime.datetime.strptime(args.date, "%Y-%m-%d").date()
+
+                generate_stats(
+                    config=config,
+                    api_directory=api_directory,
+                    prices_directory=prices_directory,
+                    from_date=date_to_process,
+                    to_date=date_to_process,
                     regen=args.regen,
                 )
         else:
