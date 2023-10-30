@@ -2,11 +2,14 @@ import logging
 import os
 
 
-def setup_logging(log_path, log_format="[%(asctime)s] [%(levelname)s] %(message)s", log_level=logging.INFO):
+def setup_logging(
+    log_path: str, log_format="[%(asctime)s] [%(levelname)s] %(message)s", log_level=logging.INFO
+) -> None:
     """
     Set up logging for the application.
 
     Args:
+        log_path (str): The path to the log file.
         log_format (str): The format string for the log messages.
         log_level (int): The logging level to use.
 
@@ -33,3 +36,5 @@ def setup_logging(log_path, log_format="[%(asctime)s] [%(levelname)s] %(message)
 
     # Set the logging level to log_level
     logging.getLogger().setLevel(log_level)
+
+    return

@@ -130,6 +130,22 @@ def get_energy_price_url(config: dict) -> str:
         return config["FLEXIBLE_PRICES_URL"]
 
 
+def get_gas_price_url(config: dict) -> str:
+    """
+    Returns the URL for the gas prices based on the selected tariff in the configuration.
+
+    Args:
+        config (dict): A dictionary containing the configuration values.
+
+    Returns:
+        str: The URL for the energy prices based on the selected tariff.
+    """
+    if config["OCTOPUS_TARIFF"] == "TRACKER":
+        return config["TRACKER_GAS_PRICES_URL"]
+    else:
+        return config["FLEXIBLE_GAS_PRICES_URL"]
+
+
 def get_energy_prices_from_api(
     url: dict, api_key: str, api_pass: str, start_date: datetime, end_date: datetime, timezone: tzinfo
 ) -> dict:
@@ -273,6 +289,27 @@ def check_prices_file_exists(config: dict, prices_directory: str, current_date: 
     return os.path.exists(price_csv_filename)
 
 
+def check_gas_price_file_exists(config: dict, gas_prices_directory: str, current_date: datetime) -> bool:
+    """
+    Check if the gas price file exists for the given tariff and date.
+
+    Args:
+        config (dict): A dictionary containing the configuration settings.
+        prices_directory (str): The directory where the prices files are stored.
+        current_date (datetime): The date for which to check the prices file.
+
+    Returns:
+        bool: True if the prices file exists, False otherwise.
+    """
+    tariff = config["OCTOPUS_TARIFF"].lower()
+    price_filename = os.path.join(
+        gas_prices_directory,
+        tariff,
+        "{}.txt".format(current_date.strftime("%Y-%m-%d")),
+    )
+    return os.path.exists(price_filename)
+
+
 def get_energy_prices(start_date, end_date, config, prices_directory):
     """
     Get energy prices from the Octopus API endpoint or from a local CSV file.
@@ -338,6 +375,78 @@ def get_energy_prices(start_date, end_date, config, prices_directory):
         time_to_price_map = get_offline_prices(config, prices_directory)
 
     return time_to_price_map
+
+
+def get_gas_price(start_date, end_date, config, gas_prices_directory) -> float:
+    """
+    Get energy prices from the Octopus API endpoint or from a local CSV file.
+
+    Args:
+        start_date (datetime): The start date for the energy prices.
+        end_date (datetime): The end date for the energy prices.
+        config (dict): A dictionary containing configuration settings.
+        gas_prices_directory (str): The directory where the energy prices are stored.
+
+    Returns:
+        float: A float representing gas price in pence.
+
+    Raises:
+        Exception: If no energy prices are returned from the API.
+    """
+    if config["OFFLINE"]:
+        return None
+
+    if config["FLEXIBLE_GAS_PRICES_URL"] is None or config["FLEXIBLE_GAS_PRICES_URL"] == "":
+        return None
+
+    if config["TRACKER_GAS_PRICES_URL"] is None or config["TRACKER_GAS_PRICES_URL"] == "":
+        return None
+
+    try:
+        # Get the filename for the CSV file containing the energy prices
+        tariff = config["OCTOPUS_TARIFF"].lower()
+        price_filename = os.path.join(
+            gas_prices_directory,
+            tariff,
+            "{}.txt".format(start_date.strftime("%Y-%m-%d")),
+        )
+
+        # If the file exists, then we skip requesting latest prices from online
+        if os.path.exists(price_filename):
+            with open(price_filename, "r") as f:
+                gas_price = float(f.readlines()[1].split(":")[-1].strip())
+                return gas_price
+
+        # Get the local timezone
+        current_timezone = get_localzone()
+
+        # Get the latest energy prices from the Octopus API endpoint
+        gas_price_url = get_gas_price_url(config)
+        api_prices = get_energy_prices_from_api(
+            url=gas_price_url,
+            api_key=config["API_KEY"],
+            api_pass=config["API_PASS"],
+            start_date=start_date,
+            end_date=end_date,
+            timezone=current_timezone,
+        )
+
+        if len(api_prices) == 0:
+            raise Exception("No energy prices returned from API")
+
+        os.makedirs(os.path.dirname(price_filename), exist_ok=True)
+
+        # Convert the API prices to a dictionary, mapping time to price in pence
+        with open(price_filename, "w") as f:
+            f.write(f"value_exc_vat: {api_prices[0]['value_exc_vat']}\n")
+            f.write(f"value_inc_vat: {api_prices[0]['value_inc_vat']}\n")
+            return api_prices[0]["value_inc_vat"]
+
+    except Exception:
+        logging.error(f"Error getting gas prices: {traceback.format_exc()}")
+        logging.info("Returning None ...")
+
+    return None
 
 
 if __name__ == "__main__":

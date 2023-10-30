@@ -38,7 +38,14 @@ from utils.config import get_config_from_yaml
 from utils.file import fix_data_corruption_of_latest_two_files, has_readings, line_count
 from utils.logger import setup_logging
 from utils.monitor import EnergyMonitor
-from utils.prices import TIMES, check_prices_file_exists, convert_price_csv_to_dict, get_energy_prices
+from utils.prices import (
+    TIMES,
+    check_gas_price_file_exists,
+    check_prices_file_exists,
+    convert_price_csv_to_dict,
+    get_energy_prices,
+    get_gas_price,
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -666,19 +673,61 @@ def get_todays_prices(config: dict, prices_directory: str) -> dict:
 
 def get_tomorrows_prices(config: dict, prices_directory: str) -> dict:
     """
-    Retrieves energy prices for today.
+    Retrieves energy prices for tomorrow.
 
     Args:
         config (dict): A dictionary containing configuration information.
         prices_directory (str): The directory where energy prices are stored.
 
     Returns:
-        dict: A dictionary containing energy prices for today.
+        dict: A dictionary containing energy prices for tomorrow.
     """
     start_of_day_datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     end_of_day_datetime = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(days=1)
     return get_energy_prices(
         start_date=start_of_day_datetime, end_date=end_of_day_datetime, config=config, prices_directory=prices_directory
+    )
+
+
+def get_todays_gas_price(config: dict, gas_prices_directory: str) -> float:
+    """
+    Retrieves gas price for today.
+
+    Args:
+        config (dict): A dictionary containing configuration information.
+        prices_directory (str): The directory where energy prices are stored.
+
+    Returns:
+        dfloatict: A float representing gas price for today.
+    """
+    start_of_day_datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day_datetime = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
+    return get_gas_price(
+        start_date=start_of_day_datetime,
+        end_date=end_of_day_datetime,
+        config=config,
+        gas_prices_directory=gas_prices_directory,
+    )
+
+
+def get_tomorrows_gas_price(config: dict, gas_prices_directory: str) -> float:
+    """
+    Retrieves gas price for tomorrow.
+
+    Args:
+        config (dict): A dictionary containing configuration information.
+        prices_directory (str): The directory where energy prices are stored.
+
+    Returns:
+        dfloatict: A float representing gas price for tomorrow.
+    """
+    start_of_day_datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    end_of_day_datetime = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(days=1)
+    return get_gas_price(
+        start_date=start_of_day_datetime,
+        end_date=end_of_day_datetime,
+        config=config,
+        gas_prices_directory=gas_prices_directory,
     )
 
 
@@ -775,6 +824,8 @@ def main():
     os.makedirs(archive_data_directory, exist_ok=True)
     prices_directory = os.path.join(data_directory, "prices")
     os.makedirs(prices_directory, exist_ok=True)
+    gas_prices_directory = os.path.join(data_directory, "prices", "gas")
+    os.makedirs(gas_prices_directory, exist_ok=True)
     cache_directory = os.path.join(data_directory, "cache")
     os.makedirs(cache_directory, exist_ok=True)
 
@@ -810,14 +861,16 @@ def main():
     fonts = get_pygame_fonts(font_path=font_path)
 
     # Get prices for today and yesterday
-    get_yesterdays_prices(config, prices_directory)
-    time_to_price_map = get_todays_prices(config, prices_directory)
+    get_yesterdays_prices(config=config, prices_directory=prices_directory)
+    time_to_price_map = get_todays_prices(config=config, prices_directory=prices_directory)
+    todays_gas_price = get_todays_gas_price(config=config, gas_prices_directory=gas_prices_directory)
 
     # Used to determine if we go to the next day whilst running
     tomorrow = date.today() + timedelta(days=1)
 
     previous_time_watts_map = None
     tomorrows_average_unit_price = None
+    tomorrows_gas_price = None
 
     week_cost = 0
     week_power = 0
@@ -839,6 +892,7 @@ def main():
 
     first_run = True
     prices_file_exists = False
+    gas_price_file_exists = False
     cost_thread = None
     past_cost_and_power_thread = None
     past_cost_and_power_thread_first_run = True
@@ -868,6 +922,7 @@ def main():
 
                 previous_time_watts_map = None
                 tomorrows_average_unit_price = None
+                tomorrows_gas_price = None
 
                 past_cost_and_power_thread_first_run = True
                 if past_cost_and_power_thread is not None:
@@ -883,17 +938,17 @@ def main():
                 )
 
                 # Get prices for today and set new tomorrow
-                start_of_day_datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                end_of_day_datetime = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
-                time_to_price_map = get_energy_prices(
-                    start_date=start_of_day_datetime,
-                    end_date=end_of_day_datetime,
-                    config=config,
-                    prices_directory=prices_directory,
-                )
+                time_to_price_map = get_todays_prices(config=config, prices_directory=prices_directory)
+                todays_gas_price = get_todays_gas_price(config=config, gas_prices_directory=gas_prices_directory)
+
                 tomorrow = date.today() + timedelta(days=1)
+
+                # Check files exists
                 prices_file_exists = check_prices_file_exists(
                     config=config, prices_directory=prices_directory, current_date=datetime.now()
+                )
+                gas_price_file_exists = check_gas_price_file_exists(
+                    config=config, gas_prices_directory=gas_prices_directory, current_date=datetime.now()
                 )
 
                 # Start the thread to calculate the past cost/power
@@ -953,6 +1008,13 @@ def main():
                     config=config, prices_directory=prices_directory, current_date=datetime.now()
                 )
 
+            # If not offline and we do not have today's gas price, try to get them again every 10 minutes
+            if config["OFFLINE"] is not True and not gas_price_file_exists and datetime.now().minute % 10 == 0:
+                todays_gas_price = get_todays_gas_price(config=config, gas_prices_directory=gas_prices_directory)
+                gas_price_file_exists = check_gas_price_file_exists(
+                    config=config, gas_prices_directory=gas_prices_directory, current_date=datetime.now()
+                )
+
             # After 4pm, if on Agile, if we still do not have all the prices for today, try to get them again
             if (
                 len(time_to_price_map) < 48
@@ -975,11 +1037,11 @@ def main():
             # Get the average unit price for today
             average_unit_price = sum(time_to_price_map.values()) / float(len(time_to_price_map))
 
-            # Get tomorrows average unit price
+            # After 8 AM, if not offline, get tomorrow's average unit price for electricity
             if (
                 config["OFFLINE"] is not True
                 and len(time_to_price_map) == 48
-                and datetime.now().hour > 16
+                and datetime.now().hour > 8
                 and datetime.now().minute % 10 == 0
                 and tomorrows_average_unit_price is None
             ):
@@ -987,6 +1049,16 @@ def main():
                 tomorrows_average_unit_price = sum(tomorrows_time_to_price_map.values()) / float(
                     len(tomorrows_time_to_price_map)
                 )
+
+            # After 4 PM, if not offline, get tomorrow's unit price for gas
+            if (
+                config["OFFLINE"] is not True
+                and len(time_to_price_map) == 48
+                and datetime.now().hour > 16
+                and datetime.now().minute % 30 == 0
+                and tomorrows_gas_price is None
+            ):
+                tomorrows_gas_price = get_tomorrows_gas_price(config=config, gas_prices_directory=gas_prices_directory)
 
             # Get the unit price for the next period, if it does not exist we use the config's default price
             unit_price_future_start = unit_price_future_start.strftime("%H:%M")
@@ -1032,13 +1104,6 @@ def main():
             cost_now = unit_price_now * power_now / 1000
 
             power_total = line_count(readings_csv_filename) / config["BLINKS_PER_KILOWATT"]
-
-            # Uncomment to get power stats from past
-            # get_power_stats_from_past = get_power_stats_from_past(
-            #     from_time=current_time,
-            #     monitor_data_directory=monitor_data_directory,
-            #     blinks_per_kilowatt=config["BLINKS_PER_KILOWATT"],
-            # )
 
             cost_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -1154,52 +1219,98 @@ def main():
                 text = fonts["number_minor_font"].render("kW", True, default_colour)
                 screen.blit(text, (491, 242))
 
-            # Average Unit Cost
-            text = fonts["heading_font"].render("Average Unit Cost:", True, heading_colour)
-            screen.blit(text, (589, 180))
+            if config["OCTOPUS_TARIFF"] == "TRACKER" or config["OCTOPUS_TARIFF"] == "FLEXIBLE":
+                # Show fixed Unit Price if on Tracker
+                text = fonts["heading_font"].render("Today's Unit Price:", True, heading_colour)
+                screen.blit(text, (588, 180))
 
-            text = fonts["number_major_font"].render("{:4.1f}p".format(average_cost_in_pence), True, default_colour)
-            screen.blit(text, (600, 212))
+                text = fonts["number_major_font"].render("{:4.1f}p".format(average_unit_price), True, default_colour)
+                screen.blit(text, (600, 212))
 
-            # Current Unit Price
-            text = fonts["heading_font"].render(
-                "Unit Price ({} - {}):".format(unit_price_now_start, unit_price_now_end),
-                True,
-                heading_colour,
-            )
-            screen.blit(text, (8, 310))
+                # Gas Unit Price Present/Future
+                text = fonts["heading_font"].render("Today's Gas Price (p/kWh or £/unit):", True, heading_colour)
+                screen.blit(text, (8, 310))
+                if todays_gas_price is not None:
+                    kw_per_gas_unit = (2.83 * 1.02264 * 38.7) / 3.6
+                    text = fonts["price_font"].render(
+                        "{:4.1f}p / £{:4.2f}".format(todays_gas_price, todays_gas_price * kw_per_gas_unit / 100),
+                        True,
+                        default_colour,
+                    )
+                    screen.blit(text, (30, 335))
+                else:
+                    text = fonts["price_font"].render("N/A", True, default_colour)
+                    screen.blit(text, (120, 335))
 
-            text = fonts["price_font"].render("{:4.1f}p".format(unit_price_now), True, default_colour)
-            screen.blit(text, (60, 335))
+                # Show tomorrow's average unit price if available
+                text = fonts["heading_font"].render("Tomorrow's Elec/Gas kWh Price:", True, heading_colour)
+                screen.blit(text, (440, 310))
 
-            # Future Unit Price
-            text = fonts["heading_font"].render(
-                "Unit Price ({} - {}):".format(unit_price_future_start, unit_price_future_end),
-                True,
-                heading_colour,
-            )
-            screen.blit(text, (298, 310))
-
-            text = fonts["price_font"].render("{:4.1f}p".format(unit_price_future), True, default_colour)
-            screen.blit(text, (350, 335))
-
-            # Average Unit Price
-            text = fonts["heading_font"].render("Average Unit Price:", True, heading_colour)
-            screen.blit(text, (587, 310))
-
-            if tomorrows_average_unit_price is None:
-                text = fonts["price_font"].render("{:4.1f}p".format(average_unit_price), True, default_colour)
-                screen.blit(text, (600, 335))
+                # Show N/A if tomorrow's average unit price is not available
+                if tomorrows_average_unit_price is None and tomorrows_gas_price is None:
+                    text = fonts["price_font"].render("N/A", True, default_colour)
+                    screen.blit(text, (545, 335))
+                elif tomorrows_average_unit_price is not None and tomorrows_gas_price is None:
+                    text = fonts["price_font"].render(
+                        "{:4.1f}p / -".format(tomorrows_average_unit_price), True, default_colour
+                    )
+                    screen.blit(text, (470, 335))
+                elif tomorrows_average_unit_price is None and tomorrows_gas_price is not None:
+                    text = fonts["price_font"].render("- / {:4.1f}p".format(tomorrows_gas_price), True, default_colour)
+                    screen.blit(text, (480, 335))
+                else:
+                    text = fonts["price_font"].render(
+                        "{:2.0f}p / {:2.0f}p".format(tomorrows_average_unit_price, tomorrows_gas_price),
+                        True,
+                        default_colour,
+                    )
+                    screen.blit(text, (470, 335))
             else:
-                text = fonts["price_small_font"].render("{:4.1f}p".format(average_unit_price), True, default_colour)
-                screen.blit(text, (635, 339))
+                # Average Unit Cost
+                text = fonts["heading_font"].render("Average Unit Cost:", True, heading_colour)
+                screen.blit(text, (589, 180))
+                text = fonts["number_major_font"].render("{:4.1f}p".format(average_cost_in_pence), True, default_colour)
+                screen.blit(text, (600, 212))
 
-                text = fonts["tomorrow_price_font"].render(
-                    "Tomorrow: {:4.1f}p".format(tomorrows_average_unit_price),
+                # Current Unit Price
+                text = fonts["heading_font"].render(
+                    "Unit Price ({} - {}):".format(unit_price_now_start, unit_price_now_end),
                     True,
-                    default_colour,
+                    heading_colour,
                 )
-                screen.blit(text, (613, 385))
+                screen.blit(text, (8, 310))
+
+                text = fonts["price_font"].render("{:4.1f}p".format(unit_price_now), True, default_colour)
+                screen.blit(text, (60, 335))
+
+                # Future Unit Price
+                text = fonts["heading_font"].render(
+                    "Unit Price ({} - {}):".format(unit_price_future_start, unit_price_future_end),
+                    True,
+                    heading_colour,
+                )
+                screen.blit(text, (298, 310))
+
+                text = fonts["price_font"].render("{:4.1f}p".format(unit_price_future), True, default_colour)
+                screen.blit(text, (350, 335))
+
+                # Show current average Unit Price, and tomorrow's average unit price if available
+                text = fonts["heading_font"].render("Average Unit Price:", True, heading_colour)
+                screen.blit(text, (587, 310))
+
+                if tomorrows_average_unit_price is None:
+                    text = fonts["price_font"].render("{:4.1f}p".format(average_unit_price), True, default_colour)
+                    screen.blit(text, (600, 335))
+                else:
+                    text = fonts["price_small_font"].render("{:4.1f}p".format(average_unit_price), True, default_colour)
+                    screen.blit(text, (635, 339))
+
+                    text = fonts["tomorrow_price_font"].render(
+                        "Tomorrow: {:4.1f}p".format(tomorrows_average_unit_price),
+                        True,
+                        default_colour,
+                    )
+                    screen.blit(text, (613, 385))
 
             yesterday_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
             last_week_start_date = yesterday_date - timedelta(days=6)
