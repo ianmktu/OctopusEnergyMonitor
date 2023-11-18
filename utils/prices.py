@@ -3,6 +3,7 @@ import logging
 import os
 import traceback
 from datetime import datetime, tzinfo
+from typing import Dict, Optional
 
 import pandas as pd
 import requests
@@ -310,7 +311,9 @@ def check_gas_price_file_exists(config: dict, gas_prices_directory: str, current
     return os.path.exists(price_filename)
 
 
-def get_energy_prices(start_date, end_date, config, prices_directory):
+def get_energy_prices(
+    start_date, end_date, config, prices_directory, return_none_if_exception=False
+) -> Optional[Dict[str, float]]:
     """
     Get energy prices from the Octopus API endpoint or from a local CSV file.
 
@@ -319,9 +322,10 @@ def get_energy_prices(start_date, end_date, config, prices_directory):
         end_date (datetime): The end date for the energy prices.
         config (dict): A dictionary containing configuration settings.
         prices_directory (str): The directory where the energy prices are stored.
+        return_none_if_exception (bool): If True, then return None if an exception is raised.
 
     Returns:
-        dict: A dictionary mapping time to energy prices in pence.
+        Dict[str, float] (optional): A dictionary mapping time to energy prices in pence.
 
     Raises:
         Exception: If no energy prices are returned from the API.
@@ -371,8 +375,12 @@ def get_energy_prices(start_date, end_date, config, prices_directory):
         )
     except Exception:
         logging.error(f"Error getting energy prices: {traceback.format_exc()}")
-        logging.info("Using offline prices instead ...")
-        time_to_price_map = get_offline_prices(config, prices_directory)
+        if return_none_if_exception:
+            logging.info("Returning None ...")
+            return None
+        else:
+            logging.info("Using offline prices instead ...")
+            time_to_price_map = get_offline_prices(config, prices_directory)
 
     return time_to_price_map
 

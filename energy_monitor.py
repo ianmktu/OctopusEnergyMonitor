@@ -671,13 +671,14 @@ def get_todays_prices(config: dict, prices_directory: str) -> dict:
     )
 
 
-def get_tomorrows_prices(config: dict, prices_directory: str) -> dict:
+def get_tomorrows_prices(config: dict, prices_directory: str, return_none_if_exception: bool = True) -> dict:
     """
     Retrieves energy prices for tomorrow.
 
     Args:
         config (dict): A dictionary containing configuration information.
         prices_directory (str): The directory where energy prices are stored.
+        return_none_if_exception (bool, optional): Whether to return None if an exception occurs. Defaults to True.
 
     Returns:
         dict: A dictionary containing energy prices for tomorrow.
@@ -685,7 +686,11 @@ def get_tomorrows_prices(config: dict, prices_directory: str) -> dict:
     start_of_day_datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     end_of_day_datetime = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(days=1)
     return get_energy_prices(
-        start_date=start_of_day_datetime, end_date=end_of_day_datetime, config=config, prices_directory=prices_directory
+        start_date=start_of_day_datetime,
+        end_date=end_of_day_datetime,
+        config=config,
+        prices_directory=prices_directory,
+        return_none_if_exception=return_none_if_exception,
     )
 
 
@@ -1037,11 +1042,11 @@ def main():
             # Get the average unit price for today
             average_unit_price = sum(time_to_price_map.values()) / float(len(time_to_price_map))
 
-            # After 8 AM, if not offline, get tomorrow's average unit price for electricity
+            # After 10 AM, if not offline, get tomorrow's average unit price for electricity
             if (
                 config["OFFLINE"] is not True
                 and len(time_to_price_map) == 48
-                and datetime.now().hour > 8
+                and datetime.now().hour >= 10
                 and datetime.now().minute % 10 == 0
                 and tomorrows_average_unit_price is None
             ):
